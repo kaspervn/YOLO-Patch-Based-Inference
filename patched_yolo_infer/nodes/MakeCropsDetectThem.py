@@ -2,8 +2,9 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from ultralytics import YOLO
+from more_itertools import batched
 
-from ..elements.CropElement import CropElement
+from ..elements.CropElement import CropElement, calculate_inference_batched
 
 
 class MakeCropsDetectThem:
@@ -69,6 +70,7 @@ class MakeCropsDetectThem:
         resize_initial_size=False,
         model=None,
         memory_optimize=True,
+        batch_size=1,
         inference_extra_args=None,
     ) -> None:
         if model is None:
@@ -90,7 +92,9 @@ class MakeCropsDetectThem:
         self.resize_initial_size = resize_initial_size  # slow operation !
         self.memory_optimize = memory_optimize # memory opimization option for segmentation
         self.class_names_dict = self.model.names # dict with human-readable class names
+        self.batch_size = batch_size
         self.inference_extra_args = inference_extra_args # dict with extra ultralytics inference parameters
+
 
         self.crops = self.get_crops_xy(
             self.image,
@@ -193,17 +197,32 @@ class MakeCropsDetectThem:
         Returns:
             None
         """
-        for crop in self.crops:
-            crop.calculate_inference(
-                self.model,
-                imgsz=self.imgsz,
-                conf=self.conf,
-                iou=self.iou,
-                segment=self.segment,
-                classes_list=self.classes_list,
-                memory_optimize=self.memory_optimize,
-                extra_args=self.inference_extra_args
-            )
-            crop.calculate_real_values()
-            if self.resize_initial_size:
-                crop.resize_results()
+        # for crop in self.crops:
+        #     crop.calculate_inference(
+        #         self.model,
+        #         imgsz=self.imgsz,
+        #         conf=self.conf,
+        #         iou=self.iou,
+        #         segment=self.segment,
+        #         classes_list=self.classes_list,
+        #         memory_optimize=self.memory_optimize,
+        #         extra_args=self.inference_extra_args
+        #     )
+        #     crop.calculate_real_values()
+        #     if self.resize_initial_size:
+        #         crop.resize_results()
+
+        for batch_of_crops in batched(self.crops, self.batch_size):
+            calculate_inference_batched(batch_of_crops,
+                                        model=self.model,
+                                        imgsz=self.imgsz,
+                                        conf=self.conf,
+                                        iou=self.iou,
+                                        segment=self.segment,
+                                        classes_list=self.classes_list,
+                                        memory_optimize=self.memory_optimize,
+                                        extra_args=self.inference_extra_args)
+            for crop in batch_of_crops:
+                crop.calculate_real_values()
+                if self.resize_initial_size:
+                    crop.resize_results()

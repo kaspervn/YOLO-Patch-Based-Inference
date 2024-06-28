@@ -127,3 +127,28 @@ class CropElement:
         self.detected_xyxy_real = resized_xyxy
         self.detected_masks_real = resized_masks
         self.detected_polygons_real = resized_polygons
+
+def calculate_inference_batched(crops, model, imgsz=640, conf=0.35, iou=0.7, segment=False, classes_list=None, memory_optimize=False, extra_args=None):
+
+    # Perform inference
+    extra_args = {} if extra_args is None else extra_args
+    predictions = model.predict([crop.crop for crop in crops], imgsz=imgsz, conf=conf, iou=iou, classes=classes_list, verbose=False, **extra_args)
+
+    assert len(predictions) == len(crops)
+    for crop, pred in zip(crops, predictions):
+        # Get the bounding boxes and convert them to a list of lists
+        crop.detected_xyxy = pred.boxes.xyxy.cpu().int().tolist()
+
+        # Get the classes and convert them to a list
+        crop.detected_cls = pred.boxes.cls.cpu().int().tolist()
+
+        # Get the mask confidence scores
+        crop.detected_conf = pred.boxes.conf.cpu().numpy()
+
+        if segment and len(crop.detected_cls) != 0:
+            if memory_optimize:
+                # Get the polygons
+                crop.polygons = [mask.astype(np.uint16) for mask in pred.masks.xy]
+            else:
+                # Get the masks
+                crop.detected_masks = pred.masks.data.cpu().numpy()
